@@ -1,7 +1,6 @@
 """WebSocket server for real-time voice assistant pipeline."""
 
 import asyncio
-import json
 import os
 import time
 import uuid
@@ -9,7 +8,6 @@ import uuid
 from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
 
 from src.latency_tracker import LatencyStore, RequestLatency
 
@@ -22,7 +20,9 @@ ASR_TIMEOUT = int(os.getenv("ASR_TIMEOUT_MS", "5000")) / 1000
 LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT_MS", "10000")) / 1000
 TTS_TIMEOUT = int(os.getenv("TTS_TIMEOUT_MS", "5000")) / 1000
 
-FALLBACK_RESPONSE = "I'm sorry, I'm experiencing a brief delay. Could you please repeat that?"
+FALLBACK_RESPONSE = (
+    "I'm sorry, I'm experiencing a brief delay. Could you please repeat that?"
+)
 
 
 async def transcribe_audio(audio_data: bytes) -> str:
@@ -43,7 +43,10 @@ async def generate_response(transcript: str) -> str:
             client.chat.completions.create(
                 model=os.getenv("LLM_MODEL", "gpt-4o"),
                 messages=[
-                    {"role": "system", "content": "You are a helpful voice assistant. Keep responses concise (2-3 sentences)."},
+                    {
+                        "role": "system",
+                        "content": "You are a helpful voice assistant. Keep responses concise (2-3 sentences).",
+                    },
                     {"role": "user", "content": transcript},
                 ],
                 stream=False,
@@ -76,9 +79,13 @@ async def voice_endpoint(websocket: WebSocket):
             # ASR
             start = time.perf_counter()
             try:
-                transcript = await asyncio.wait_for(transcribe_audio(audio_data), timeout=ASR_TIMEOUT)
+                transcript = await asyncio.wait_for(
+                    transcribe_audio(audio_data), timeout=ASR_TIMEOUT
+                )
             except asyncio.TimeoutError:
-                await websocket.send_json({"error": "ASR timeout", "fallback": FALLBACK_RESPONSE})
+                await websocket.send_json(
+                    {"error": "ASR timeout", "fallback": FALLBACK_RESPONSE}
+                )
                 continue
             latency.asr_latency_ms = (time.perf_counter() - start) * 1000
 
@@ -86,14 +93,23 @@ async def voice_endpoint(websocket: WebSocket):
             start = time.perf_counter()
             response_text = await generate_response(transcript)
             latency.llm_total_ms = (time.perf_counter() - start) * 1000
-            latency.llm_ttft_ms = latency.llm_total_ms  # Non-streaming; in streaming this would differ
+            latency.llm_ttft_ms = (
+                latency.llm_total_ms
+            )  # Non-streaming; in streaming this would differ
 
             # TTS
             start = time.perf_counter()
             try:
-                audio_response = await asyncio.wait_for(synthesize_speech(response_text), timeout=TTS_TIMEOUT)
+                audio_response = await asyncio.wait_for(
+                    synthesize_speech(response_text), timeout=TTS_TIMEOUT
+                )
             except asyncio.TimeoutError:
-                await websocket.send_json({"text": response_text, "warning": "TTS timeout, text-only response"})
+                await websocket.send_json(
+                    {
+                        "text": response_text,
+                        "warning": "TTS timeout, text-only response",
+                    }
+                )
                 latency.tts_total_ms = TTS_TIMEOUT * 1000
                 latency_store.record(latency)
                 continue
@@ -102,12 +118,14 @@ async def voice_endpoint(websocket: WebSocket):
 
             latency_store.record(latency)
 
-            await websocket.send_json({
-                "request_id": request_id,
-                "transcript": transcript,
-                "response": response_text,
-                "latency": latency.to_dict(),
-            })
+            await websocket.send_json(
+                {
+                    "request_id": request_id,
+                    "transcript": transcript,
+                    "response": response_text,
+                    "latency": latency.to_dict(),
+                }
+            )
 
             if audio_response:
                 await websocket.send_bytes(audio_response)
@@ -151,4 +169,5 @@ async def index():
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -9,6 +9,7 @@ from pathlib import Path
 @dataclass
 class RequestLatency:
     """Latency breakdown for a single voice assistant request."""
+
     request_id: str
     asr_latency_ms: float = 0
     llm_ttft_ms: float = 0
@@ -20,7 +21,9 @@ class RequestLatency:
     timestamp: float = field(default_factory=time.time)
 
     def compute_total(self):
-        self.total_ms = self.asr_latency_ms + self.llm_ttft_ms + self.tts_ttfb_ms + self.overhead_ms
+        self.total_ms = (
+            self.asr_latency_ms + self.llm_ttft_ms + self.tts_ttfb_ms + self.overhead_ms
+        )
 
     def to_dict(self) -> dict:
         return {
