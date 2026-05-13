@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install ruff
+      - name: Lint
+        run: ruff check src/ tests/
+      - name: Format check
+        run: ruff format --check src/ tests/
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+      - name: Run tests
+        run: pytest tests/ -v --cov=src --cov-report=term-missing
+
+  latency-tracker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Validate latency tracker
+        run: |
+          python -c "
+          from src.latency_tracker import LatencyStore, RequestLatency, LATENCY_BUDGET
+          store = LatencyStore()
+          r = RequestLatency(request_id='test', asr_latency_ms=200, llm_ttft_ms=400, tts_ttfb_ms=150, overhead_ms=50)
+          store.record(r)
+          summary = store.get_percentiles()
+          budget = store.check_budget()
+          assert all(v['within_budget'] for v in budget.values()), f'Budget check failed: {budget}'
+          print('Latency tracker validation passed')
+          print(f'Budget check: {budget}')
+          "
